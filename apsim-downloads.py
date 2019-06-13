@@ -61,16 +61,6 @@ def get_country_codes(country_names, codes_lookup):
             codes[code] = 1
     return codes, unknown
 
-# Generates a template SQL query to update the database to fix invalid
-# country coedes.
-def generate_sql(unknowns, filename):
-    with open(filename, 'w', encoding = 'utf-8') as file:
-        for country in unknowns:
-            file.write("""UPDATE [APSIM.Registration].[dbo].[Registrations]
-SET [Country] = ''
-WHERE [Country] = '%s'\n\n""" % country.replace("'", "''"))
-    print('Generated sql template at ', sql_file, sep = '')
-
 # ------------------------------------------------------------------- #
 # --------------------------- Main Program -------------------------- #
 # ------------------------------------------------------------------- #
@@ -121,12 +111,6 @@ downloads = get_downloads(registrations_url, downloads_fileName)
 # Get country codes
 country_codes_lookup = get_codes_lookup() # dict, mapping country names to country codes
 country_codes, unknown_countries = get_country_codes(downloads['Country'], country_codes_lookup)
-
-# ----- Remove ----- #
-sql_file = 'fix_unknowns.txt'
-if len(unknown_countries) > 0:
-    generate_sql(unknown_countries, sql_file)
-# ----- Remove ----- #
 
 # Create a data frame containing country code, and num downloads.
 cols = ['Number of Downloads']
