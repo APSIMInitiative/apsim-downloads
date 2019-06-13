@@ -1,0 +1,7 @@
+.vscode/
+*.csv
+*.png
+*.bak
+
+# installers for some python modules
+*.whl
