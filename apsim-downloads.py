@@ -5,13 +5,25 @@
 #!pip install pyproj-2.1.3-cp36-cp36m-win_amd64.whl
 #!pip install basemap-1.2.0-cp36-cp36m-win_amd64.whl
 
+# Basemap package generates deprecated warnings. This is good to know,
+# but for now I don't plan on switching to a different package any time
+# soon so for now just ignore these warnings.
+import warnings
+warnings.filterwarnings('ignore')
+
+import imageio
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy
+import os
 import pandas
-import unicodedata
 import requests
+import sys
 import tempfile
+import time
+import unicodedata
+#import warnings
+
 from iso3166 import countries
 from os import path
 from matplotlib.patches import Polygon
@@ -61,6 +73,37 @@ def get_country_codes(country_names, codes_lookup):
             codes[code] = 1
     return codes, unknown
 
+# Generates the colour scheme
+def get_colour_scheme(data, colour_scheme):
+    # Get the number of downloads from the country with the greatest
+    # number of downloads.
+    max_num_downloads = pandas.value_counts(data['Country'].values).max()
+    if data.empty:
+        max_num_downloads = 0
+
+    # Generate colour map - indices go from 0..max_num_downloads.
+    num_colours = max_num_downloads + 1
+    colour_map = plt.get_cmap(colour_scheme)
+    scheme = [colour_map(i / num_colours) for i in range(num_colours)]
+
+    return scheme
+
+# Individual frames are saved as apsim-downloads_xxx.png, where xxx is
+# a number. This function returns this number.
+def get_image_number(filename):
+    return int(os.path.splitext(filename)[0].split('_')[1])
+
+# Builds the gif by appending all frames in the output directory.
+def rebuild_gif(filename, cache_dir):
+    image_names = [f for f in os.listdir(cache_dir) if os.path.isfile(os.path.join(cache_dir, f))]
+    image_names.sort(key = lambda x: get_image_number(x))
+    images = []
+    for file in image_names:
+        file = cache_dir + '/' + file
+        images.append(imageio.imread(file))
+
+    imageio.mimsave(gif_file, images)
+
 # ------------------------------------------------------------------- #
 # --------------------------- Main Program -------------------------- #
 # ------------------------------------------------------------------- #
@@ -72,6 +115,8 @@ downloads_fileName = 'registrations.csv'
 #downloads_filename = get_temp_filename()
 
 registrations_url = 'https://www.apsim.info/APSIM.Registration.Portal/ViewRegistrations.aspx'
+
+date_format = '%Y-%m-%d'
 
 # We use the 'Equidistant Cylindrical Projection' projection type.
 # Another good alternative is the 'Robinson Projection'.
@@ -100,66 +145,110 @@ map_title = 'Number of apsim downloads by country'
 # Long description below the map.
 map_description = 'Description goes here'
 
+# Cache directory. Each 'frame' (an image) will be saved here.
+cache = 'output'
+
 # File to which the map will be written.
-map_file = 'apsim-downloads.png'
+map_file = cache + '/apsim-downloads'
+
+# gif filename
+gif_file = 'apsim-downloads.gif'
+
+# if set to false, we will re-download data from the webservice and
+# recreate all images.
+use_cache = True
 
 # ----- End Constants ----- #
 
-# Get downloads info
+# If using cache, just rebuild gif and exit.
+if use_cache:
+    rebuild_gif(gif_file, cache)
+    sys.exit()
+
+# Get downloads info from web service.
 downloads = get_downloads(registrations_url, downloads_fileName)
 
-# Get country codes
-country_codes_lookup = get_codes_lookup() # dict, mapping country names to country codes
-country_codes, unknown_countries = get_country_codes(downloads['Country'], country_codes_lookup)
+# Determine date range
+first_date = min(downloads['Date'], key = lambda x: time.strptime(x, date_format))
+last_date = max(downloads['Date'], key = lambda x: time.strptime(x, date_format))
 
-# Create a data frame containing country code, and num downloads.
-cols = ['Number of Downloads']
-data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
-data.index.names = ['Country Code']
-data = data.sort_values(cols[0], ascending = False)
-max_num_downloads = data[cols[0]].max()
+dates = [x.date() for x in pandas.date_range(first_date, last_date, freq = 'MS')]
 
-# Generate colour map - indices go from 0..max_num_downloads.
-num_colours = max_num_downloads + 1
-colour_map = plt.get_cmap(colour_scheme)
-scheme = [colour_map(i / num_colours) for i in range(num_colours)]
+# Get a dict, mapping country names to country codes
+country_codes_lookup = get_codes_lookup()
 
-mpl.style.use(graph_style)
+# Calculate the colour scheme
+colours = get_colour_scheme(downloads, colour_scheme)
 
-fig = plt.figure(figsize = (22, 12))
-ax = fig.add_subplot(111, frame_on = False)
-fig.suptitle(map_title, fontsize = 30, y = 0.95)
+# images is the array of images which will be used in the gif
+images = []
+i = 0
 
-m = Basemap(lon_0 = 0, projection = map_type)
-m.drawmapboundary(color = 'w')
+# Initialise a stopwatch for output diagnostics.
+start_time = time.time()
 
-m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
-# Iterate through states/countries in the shapefile.
-for info, shape in zip(m.units_info, m.units):
-    iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
-    if iso3 not in data.index:
-        # Zero downloads from this country.
-        if not default_colour == '':
-            color = default_colour
-        else:
-            color = scheme[0]
+for dt in dates:
+    progress = i / len(dates)
+    if i > 0: # Only show time remaining if i > 0
+        elapsed = time.time() - start_time
+        eta = elapsed / progress - elapsed
+        print('Working: ', '%.2f' % progress, '%; eta = ', '%.2fs' % eta, sep = '')
     else:
-        color = scheme[data.loc[iso3][cols[0]]]
-    
-    # Fill this state/country with colour.
-    patches = [Polygon(numpy.array(shape), True)]
-    pc = PatchCollection(patches)
-    pc.set_facecolor(color)
-    ax.add_collection(pc)
+        print('Working: ', '%.2f' % progress, '%', sep = '')
+    # Each time around the loop, we only look at downloads before the current date.
+    current_date = dt.__str__()
+    downloads_before_now = downloads[downloads['Date'] < current_date]
 
-# Draw colour legend beneath map.
-ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
-cmap = mpl.colors.ListedColormap(scheme)
-axis_ticks = numpy.linspace(0, max_num_downloads, 8)
-cb = mpl.colorbar.ColorbarBase(ax_legend, cmap = cmap, ticks = axis_ticks, boundaries = axis_ticks, orientation = 'horizontal')
+    # Get country codes
+    country_codes, unknown_countries = get_country_codes(downloads_before_now['Country'], country_codes_lookup)
 
-# Add the description beneath the map.
-plt.annotate(map_description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
+    # Create a data frame containing country code, and num downloads.
+    cols = ['Number of Downloads']
+    data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
+    data.index.names = ['Country Code']
+    data = data.sort_values(cols[0], ascending = False)
 
-# Write the map to disk.
-plt.savefig(map_file, bbox_inches = 'tight', pad_inches = 0.2)
+    mpl.style.use(graph_style)
+
+    fig = plt.figure(figsize = (22, 12))
+    ax = fig.add_subplot(111, frame_on = False)
+    title = map_title + ' - ' + dt.strftime('%b %Y')
+    fig.suptitle(title, fontsize = 30, y = 0.95)
+
+    m = Basemap(lon_0 = 0, projection = map_type)
+    m.drawmapboundary(color = 'w')
+
+    m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
+    # Iterate through states/countries in the shapefile.
+    for info, shape in zip(m.units_info, m.units):
+        iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
+        if iso3 not in data.index:
+            # Zero downloads from this country.
+            if not default_colour == '':
+                color = default_colour
+            else:
+                color = colours[0]
+        else:
+            color = colours[data.loc[iso3][cols[0]]]
+
+        # Fill this state/country with colour.
+        patches = [Polygon(numpy.array(shape), True)]
+        pc = PatchCollection(patches)
+        pc.set_facecolor(color)
+        ax.add_collection(pc)
+
+    # Draw colour legend beneath map.
+    ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
+    cmap = mpl.colors.ListedColormap(colours)
+    axis_ticks = numpy.linspace(0, len(colours) - 1, 8)
+    cb = mpl.colorbar.ColorbarBase(ax_legend, cmap = cmap, ticks = axis_ticks, boundaries = axis_ticks, orientation = 'horizontal')
+
+    # Add the description beneath the map.
+    plt.annotate(map_description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
+
+    # Write the map to disk.
+    filename = map_file + '_' + str(i) + '.png'
+    plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
+    images.append(imageio.imread(filename))
+    i += 1
+    imageio.mimsave(gif_file, images)

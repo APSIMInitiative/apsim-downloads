@@ -2,6 +2,8 @@
 *.csv
 *.png
 *.bak
-
+*.gif
+output/
 # installers for some python modules
 *.whl
+*.zip
