@@ -98,10 +98,22 @@ def rebuild_gif(filename, cache_dir):
     image_names = [f for f in os.listdir(cache_dir) if os.path.isfile(os.path.join(cache_dir, f))]
     image_names.sort(key = lambda x: get_image_number(x))
     images = []
+
+    start_time = time.time()
+    i = 0
+
     for file in image_names:
+        progress = i / len(dates)
+        if i > 0: # Only show time remaining if i > 0
+            elapsed = time.time() - start_time
+            eta = elapsed / progress - elapsed
+            print('Working: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '')
+        else:
+            print('Working: ', '%.2f' % (progress * 100), '%', sep = '')
         file = cache_dir + '/' + file
         images.append(imageio.imread(file))
-
+        i += 1
+    print('Done. Writing animation disk...')
     imageio.mimsave(gif_file, images)
 
 # ------------------------------------------------------------------- #
@@ -125,7 +137,7 @@ map_type = 'cyl'
 
 # We will use the yellow-orange-red colour scheme. Alternatives here:
 # https://matplotlib.org/3.1.0/gallery/color/colormap_reference.html
-colour_scheme = 'YlOrRd'
+colour_scheme = 'jet'
 
 # Colour to use for countries with no downloads. Set to '' to use zero
 # colour in colour scheme (yellow in the yellow-orange-red scheme).
@@ -187,14 +199,17 @@ i = 0
 # Initialise a stopwatch for output diagnostics.
 start_time = time.time()
 
+cum_downloads_us = {}
+us_downloads_x = []
+us_downloads_y = []
 for dt in dates:
     progress = i / len(dates)
     if i > 0: # Only show time remaining if i > 0
         elapsed = time.time() - start_time
         eta = elapsed / progress - elapsed
-        print('Working: ', '%.2f' % progress, '%; eta = ', '%.2fs' % eta, sep = '')
+        print('Working: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '')
     else:
-        print('Working: ', '%.2f' % progress, '%', sep = '')
+        print('Working: ', '%.2f' % (progress * 100), '%', sep = '')
     # Each time around the loop, we only look at downloads before the current date.
     current_date = dt.__str__()
     downloads_before_now = downloads[downloads['Date'] < current_date]
@@ -207,6 +222,8 @@ for dt in dates:
     data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
     data.index.names = ['Country Code']
     data = data.sort_values(cols[0], ascending = False)
+    us_downloads_x.append(dt)
+    us_downloads_y.append(len(downloads_before_now[downloads_before_now['Country'] == 'United States of America']))
 
     mpl.style.use(graph_style)
 
@@ -251,4 +268,15 @@ for dt in dates:
     plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
     images.append(imageio.imread(filename))
     i += 1
-    imageio.mimsave(gif_file, images)
+
+print('Working: 100.00%')
+print('Finished generating heatmaps. Building animation...')
+rebuild_gif(gif_file, cache)
+
+plt.plot(us_downloads_x, us_downloads_y)
+plt.title('US APSIM Downloads over time')
+plt.xlabel('Date')
+plt.ylabel('Cumulative number of downloads')
+plt.grid(True)
+plt.savefig('downloads-us.png')
+print('done')
