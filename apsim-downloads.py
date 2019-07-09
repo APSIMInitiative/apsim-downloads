@@ -103,7 +103,7 @@ def rebuild_gif(filename, cache_dir):
     i = 0
 
     for file in image_names:
-        progress = i / len(dates)
+        progress = i / len(image_names)
         if i > 0: # Only show time remaining if i > 0
             elapsed = time.time() - start_time
             eta = elapsed / progress - elapsed
@@ -155,7 +155,10 @@ shapefile = 'map_data/ne_10m_admin_0_countries'
 map_title = 'Number of apsim downloads by country'
 
 # Long description below the map.
-map_description = 'Description goes here'
+map_description = ''
+
+# Number of ticks shown in the axis scale.
+num_ticks = 8
 
 # Cache directory. Each 'frame' (an image) will be saved here.
 cache = 'output'
@@ -168,7 +171,7 @@ gif_file = 'apsim-downloads.gif'
 
 # if set to false, we will re-download data from the webservice and
 # recreate all images.
-use_cache = True
+use_cache = False
 
 # ----- End Constants ----- #
 
@@ -196,6 +199,20 @@ colours = get_colour_scheme(downloads, colour_scheme)
 images = []
 i = 0
 
+fig = plt.figure(figsize = (22, 12))
+ax = fig.add_subplot(111, frame_on = False)
+
+m = Basemap(lon_0 = 0, projection = map_type)
+m.drawmapboundary(color = 'w')
+m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
+
+# Dict mapping country codes to cumulative number of downloads in that
+# country as of last month.
+downloads_prev = {}
+
+# Dict mapping country map coordinate info to patch info.
+country_patches = {}
+
 # Initialise a stopwatch for output diagnostics.
 start_time = time.time()
 
@@ -203,6 +220,7 @@ cum_downloads_us = {}
 us_downloads_x = []
 us_downloads_y = []
 for dt in dates:
+    t1 = time.time() # Used to record the duration of each iteration
     progress = i / len(dates)
     if i > 0: # Only show time remaining if i > 0
         elapsed = time.time() - start_time
@@ -227,51 +245,56 @@ for dt in dates:
 
     mpl.style.use(graph_style)
 
-    fig = plt.figure(figsize = (22, 12))
-    ax = fig.add_subplot(111, frame_on = False)
     title = map_title + ' - ' + dt.strftime('%b %Y')
     fig.suptitle(title, fontsize = 30, y = 0.95)
 
-    m = Basemap(lon_0 = 0, projection = map_type)
-    m.drawmapboundary(color = 'w')
-
-    m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
     # Iterate through states/countries in the shapefile.
+    n = 0
     for info, shape in zip(m.units_info, m.units):
         iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
-        if iso3 not in data.index:
-            # Zero downloads from this country.
-            if not default_colour == '':
-                color = default_colour
-            else:
-                color = colours[0]
-        else:
-            color = colours[data.loc[iso3][cols[0]]]
+        j = m.units.index(shape)
+        if iso3 in data.index:
+            num_downloads = data.loc[iso3][cols[0]]
+            if iso3 not in downloads_prev or downloads_prev[iso3] != num_downloads:
+                # Only update this country's data if it has changed since last month.
+                downloads_prev[iso3] = num_downloads
+                color = colours[num_downloads]
 
-        # Fill this state/country with colour.
-        patches = [Polygon(numpy.array(shape), True)]
-        pc = PatchCollection(patches)
-        pc.set_facecolor(color)
-        ax.add_collection(pc)
-
+                # Fill this state/country with colour.
+                if country_patches and j in country_patches:
+                    pc = country_patches[j]
+                    pc.set_facecolor(color)
+                else:
+                    patches = [Polygon(numpy.array(shape), True)]
+                    pc = PatchCollection(patches)
+                    pc.set_facecolor(color)
+                    country_patches[j] = pc
+                    ax.add_collection(pc)
+                n += 1
+    print('i = %d; n = %d' % (i, n))
     # Draw colour legend beneath map.
     ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
     cmap = mpl.colors.ListedColormap(colours)
-    axis_ticks = numpy.linspace(0, len(colours) - 1, 8)
-    cb = mpl.colorbar.ColorbarBase(ax_legend, cmap = cmap, ticks = axis_ticks, boundaries = axis_ticks, orientation = 'horizontal')
+    axis_ticks = numpy.linspace(0, 1, num_ticks)
+    axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
+    cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
+    cb.set_ticks(axis_ticks)
+    cb.set_ticklabels(axis_tick_labels)
 
     # Add the description beneath the map.
-    plt.annotate(map_description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
+    if map_description != '':
+        plt.annotate(map_description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
 
     # Write the map to disk.
     filename = map_file + '_' + str(i) + '.png'
     plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
     images.append(imageio.imread(filename))
     i += 1
+    print('Iteration duration = %.2fs' % (time.time() - t1))
 
 print('Working: 100.00%')
 print('Finished generating heatmaps. Building animation...')
-rebuild_gif(gif_file, cache)
+imageio.mimsave(gif_file, images)
 
 plt.plot(us_downloads_x, us_downloads_y)
 plt.title('US APSIM Downloads over time')
