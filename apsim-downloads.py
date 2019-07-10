@@ -101,20 +101,38 @@ def rebuild_gif(filename, cache_dir):
 
     start_time = time.time()
     i = 0
-
     for file in image_names:
         progress = i / len(image_names)
         if i > 0: # Only show time remaining if i > 0
             elapsed = time.time() - start_time
             eta = elapsed / progress - elapsed
-            print('Working: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '')
+            print('\rWorking: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '', end = '')
         else:
-            print('Working: ', '%.2f' % (progress * 100), '%', sep = '')
+            print('\rWorking: ', '%.2f' % (progress * 100), '%', sep = '', end = '')
         file = cache_dir + '/' + file
         images.append(imageio.imread(file))
         i += 1
-    print('Done. Writing animation disk...')
+    print('\rWorking: 100.00%; eta = 0.00s\nWriting animation to disk...')
     imageio.mimsave(gif_file, images)
+
+def graph_downloads_for_country(downloads, dates, country, filename):
+    downloads = downloads[downloads['Country'] == country]
+    x = []
+    y = []
+    for dt in dates:
+        current_date = dt.__str__()
+        downloads_before_now = downloads[downloads['Date'] < current_date]
+        x.append(dt)
+        y.append(len(downloads_before_now))
+    
+    plt.clf()
+    plt.plot(x, y)
+    plt.title('%s APSIM Downloads over time' % country)
+    plt.xlabel('Date')
+    plt.ylabel('Cumulative number of downloads')
+    plt.grid(True)
+    plt.savefig(filename)
+    plt.clf()
 
 # ------------------------------------------------------------------- #
 # --------------------------- Main Program -------------------------- #
@@ -137,7 +155,7 @@ map_type = 'cyl'
 
 # We will use the yellow-orange-red colour scheme. Alternatives here:
 # https://matplotlib.org/3.1.0/gallery/color/colormap_reference.html
-colour_scheme = 'jet'
+colour_scheme = 'YlOrRd'
 
 # Colour to use for countries with no downloads. Set to '' to use zero
 # colour in colour scheme (yellow in the yellow-orange-red scheme).
@@ -178,10 +196,11 @@ use_cache = False
 # If using cache, just rebuild gif and exit.
 if use_cache:
     rebuild_gif(gif_file, cache)
-    sys.exit()
+    sys.exit(0)
 
 # Get downloads info from web service.
 downloads = get_downloads(registrations_url, downloads_fileName)
+#downloads = downloads[downloads['Country'] != 'Australia']
 
 # Determine date range
 first_date = min(downloads['Date'], key = lambda x: time.strptime(x, date_format))
@@ -192,8 +211,12 @@ dates = [x.date() for x in pandas.date_range(first_date, last_date, freq = 'MS')
 # Get a dict, mapping country names to country codes
 country_codes_lookup = get_codes_lookup()
 
+graph_downloads_for_country(downloads, dates, 'United States of America', 'downloads-us.png')
+graph_downloads_for_country(downloads, dates, 'Brazil', 'downloads-brazil.png')
+
 # Calculate the colour scheme
 colours = get_colour_scheme(downloads, colour_scheme)
+cmap = mpl.colors.ListedColormap(colours)
 
 # images is the array of images which will be used in the gif
 images = []
@@ -213,21 +236,20 @@ downloads_prev = {}
 # Dict mapping country map coordinate info to patch info.
 country_patches = {}
 
+axis_ticks = numpy.linspace(0, 1, num_ticks)
+axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
+
 # Initialise a stopwatch for output diagnostics.
 start_time = time.time()
-
-cum_downloads_us = {}
-us_downloads_x = []
-us_downloads_y = []
+print('Generating frame data...')
 for dt in dates:
-    t1 = time.time() # Used to record the duration of each iteration
     progress = i / len(dates)
     if i > 0: # Only show time remaining if i > 0
         elapsed = time.time() - start_time
         eta = elapsed / progress - elapsed
-        print('Working: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '')
+        print('\rWorking: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '', end = '')
     else:
-        print('Working: ', '%.2f' % (progress * 100), '%', sep = '')
+        print('\rWorking: ', '%.2f' % (progress * 100), '%', sep = '', end = '')
     # Each time around the loop, we only look at downloads before the current date.
     current_date = dt.__str__()
     downloads_before_now = downloads[downloads['Date'] < current_date]
@@ -240,9 +262,6 @@ for dt in dates:
     data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
     data.index.names = ['Country Code']
     data = data.sort_values(cols[0], ascending = False)
-    us_downloads_x.append(dt)
-    us_downloads_y.append(len(downloads_before_now[downloads_before_now['Country'] == 'United States of America']))
-
     mpl.style.use(graph_style)
 
     title = map_title + ' - ' + dt.strftime('%b %Y')
@@ -271,15 +290,12 @@ for dt in dates:
                     country_patches[j] = pc
                     ax.add_collection(pc)
                 n += 1
-    print('i = %d; n = %d' % (i, n))
     # Draw colour legend beneath map.
-    ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
-    cmap = mpl.colors.ListedColormap(colours)
-    axis_ticks = numpy.linspace(0, 1, num_ticks)
-    axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
-    cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
-    cb.set_ticks(axis_ticks)
-    cb.set_ticklabels(axis_tick_labels)
+    if len(fig.axes) < 2:
+        ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
+        cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
+        cb.set_ticks(axis_ticks)
+        cb.set_ticklabels(axis_tick_labels)
 
     # Add the description beneath the map.
     if map_description != '':
@@ -290,16 +306,7 @@ for dt in dates:
     plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
     images.append(imageio.imread(filename))
     i += 1
-    print('Iteration duration = %.2fs' % (time.time() - t1))
 
 print('Working: 100.00%')
 print('Finished generating heatmaps. Building animation...')
 imageio.mimsave(gif_file, images)
-
-plt.plot(us_downloads_x, us_downloads_y)
-plt.title('US APSIM Downloads over time')
-plt.xlabel('Date')
-plt.ylabel('Cumulative number of downloads')
-plt.grid(True)
-plt.savefig('downloads-us.png')
-print('done')
