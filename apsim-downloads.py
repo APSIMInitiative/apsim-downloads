@@ -134,6 +134,132 @@ def graph_downloads_for_country(downloads, dates, country, filename):
     plt.savefig(filename)
     plt.clf()
 
+def generate_animation():
+    # Dict mapping country codes to cumulative number of downloads in that
+    # country as of last month.
+    downloads_prev = {}
+
+    # Dict mapping country map coordinate info to patch info.
+    country_patches = {}
+
+    axis_ticks = numpy.linspace(0, 1, num_ticks)
+    axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
+
+    # Initialise a stopwatch for output diagnostics.
+    start_time = time.time()
+    print('Generating frame data...')
+    for dt in dates:
+        progress = i / len(dates)
+        if i > 0: # Only show time remaining if i > 0
+            elapsed = time.time() - start_time
+            eta = elapsed / progress - elapsed
+            print('\rWorking: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '', end = '')
+        else:
+            print('\rWorking: ', '%.2f' % (progress * 100), '%', sep = '', end = '')
+        # Each time around the loop, we only look at downloads before the current date.
+        current_date = dt.__str__()
+        downloads_before_now = downloads[downloads['Date'] < current_date]
+
+        # Get country codes
+        country_codes, unknown_countries = get_country_codes(downloads_before_now['Country'], country_codes_lookup)
+
+        # Create a data frame containing country code, and num downloads.
+        cols = ['Number of Downloads']
+        data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
+        data.index.names = ['Country Code']
+        data = data.sort_values(cols[0], ascending = False)
+        mpl.style.use(graph_style)
+
+        title = map_title + ' - ' + dt.strftime('%b %Y')
+        fig.suptitle(title, fontsize = 30, y = 0.95)
+
+        # Iterate through states/countries in the shapefile.
+        n = 0
+        for info, shape in zip(m.units_info, m.units):
+            iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
+            j = m.units.index(shape)
+            if iso3 in data.index:
+                num_downloads = data.loc[iso3][cols[0]]
+                if iso3 not in downloads_prev or downloads_prev[iso3] != num_downloads:
+                    # Only update this country's data if it has changed since last month.
+                    downloads_prev[iso3] = num_downloads
+                    color = colours[num_downloads]
+
+                    # Fill this state/country with colour.
+                    if country_patches and j in country_patches:
+                        pc = country_patches[j]
+                        pc.set_facecolor(color)
+                    else:
+                        patches = [Polygon(numpy.array(shape), True)]
+                        pc = PatchCollection(patches)
+                        pc.set_facecolor(color)
+                        country_patches[j] = pc
+                        ax.add_collection(pc)
+                    n += 1
+        # Draw colour legend beneath map.
+        if len(fig.axes) < 2:
+            ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
+            cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
+            cb.set_ticks(axis_ticks)
+            cb.set_ticklabels(axis_tick_labels)
+
+        # Add the description beneath the map.
+        if map_description != '':
+            plt.annotate(map_description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
+
+        # Write the map to disk.
+        filename = map_file + '_' + str(i) + '.png'
+        plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
+        images.append(imageio.imread(filename))
+        i += 1
+
+    print('Working: 100.00%')
+    print('Finished generating heatmaps. Building animation...')
+    imageio.mimsave(gif_file, images)
+
+def build_static_image(download_data, description, filename):
+    # Get country codes
+        country_codes, unknown_countries = get_country_codes(download_data['Country'], country_codes_lookup)
+
+        axis_ticks = numpy.linspace(0, 1, num_ticks)
+        axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
+
+        # Create a data frame containing country code, and num downloads.
+        cols = ['Number of Downloads']
+        data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
+        data.index.names = ['Country Code']
+        data = data.sort_values(cols[0], ascending = False)
+        mpl.style.use(graph_style)
+
+        fig.suptitle(map_title, fontsize = 30, y = 0.95)
+
+        # Iterate through states/countries in the shapefile.
+        for info, shape in zip(m.units_info, m.units):
+            iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
+            if iso3 in data.index:
+                num_downloads = data.loc[iso3][cols[0]]
+                color = colours[num_downloads]
+
+                # Fill this state/country with colour.
+                patches = [Polygon(numpy.array(shape), True)]
+                pc = PatchCollection(patches)
+                pc.set_facecolor(color)
+                ax.add_collection(pc)
+
+        # Draw colour legend beneath map.
+        if len(fig.axes) < 2:
+            ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
+            cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
+            cb.set_ticks(axis_ticks)
+            cb.set_ticklabels(axis_tick_labels)
+
+        # Add the description beneath the map.
+        if description != '':
+            plt.annotate(description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
+
+        # Write the map to disk.
+        plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
+
 # ------------------------------------------------------------------- #
 # --------------------------- Main Program -------------------------- #
 # ------------------------------------------------------------------- #
@@ -144,7 +270,7 @@ def graph_downloads_for_country(downloads, dates, country, filename):
 downloads_fileName = 'registrations.csv'
 #downloads_filename = get_temp_filename()
 
-registrations_url = 'https://www.apsim.info/APSIM.Registration.Portal/ViewRegistrations.aspx'
+registrations_url = 'https://apsimdev.apsim.info/APSIM.Registration.Portal/ViewRegistrations.aspx'
 
 date_format = '%Y-%m-%d'
 
@@ -229,84 +355,6 @@ m = Basemap(lon_0 = 0, projection = map_type)
 m.drawmapboundary(color = 'w')
 m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
 
-# Dict mapping country codes to cumulative number of downloads in that
-# country as of last month.
-downloads_prev = {}
-
-# Dict mapping country map coordinate info to patch info.
-country_patches = {}
-
-axis_ticks = numpy.linspace(0, 1, num_ticks)
-axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
-
-# Initialise a stopwatch for output diagnostics.
-start_time = time.time()
-print('Generating frame data...')
-for dt in dates:
-    progress = i / len(dates)
-    if i > 0: # Only show time remaining if i > 0
-        elapsed = time.time() - start_time
-        eta = elapsed / progress - elapsed
-        print('\rWorking: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '', end = '')
-    else:
-        print('\rWorking: ', '%.2f' % (progress * 100), '%', sep = '', end = '')
-    # Each time around the loop, we only look at downloads before the current date.
-    current_date = dt.__str__()
-    downloads_before_now = downloads[downloads['Date'] < current_date]
-
-    # Get country codes
-    country_codes, unknown_countries = get_country_codes(downloads_before_now['Country'], country_codes_lookup)
-
-    # Create a data frame containing country code, and num downloads.
-    cols = ['Number of Downloads']
-    data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
-    data.index.names = ['Country Code']
-    data = data.sort_values(cols[0], ascending = False)
-    mpl.style.use(graph_style)
-
-    title = map_title + ' - ' + dt.strftime('%b %Y')
-    fig.suptitle(title, fontsize = 30, y = 0.95)
-
-    # Iterate through states/countries in the shapefile.
-    n = 0
-    for info, shape in zip(m.units_info, m.units):
-        iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
-        j = m.units.index(shape)
-        if iso3 in data.index:
-            num_downloads = data.loc[iso3][cols[0]]
-            if iso3 not in downloads_prev or downloads_prev[iso3] != num_downloads:
-                # Only update this country's data if it has changed since last month.
-                downloads_prev[iso3] = num_downloads
-                color = colours[num_downloads]
-
-                # Fill this state/country with colour.
-                if country_patches and j in country_patches:
-                    pc = country_patches[j]
-                    pc.set_facecolor(color)
-                else:
-                    patches = [Polygon(numpy.array(shape), True)]
-                    pc = PatchCollection(patches)
-                    pc.set_facecolor(color)
-                    country_patches[j] = pc
-                    ax.add_collection(pc)
-                n += 1
-    # Draw colour legend beneath map.
-    if len(fig.axes) < 2:
-        ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
-        cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
-        cb.set_ticks(axis_ticks)
-        cb.set_ticklabels(axis_tick_labels)
-
-    # Add the description beneath the map.
-    if map_description != '':
-        plt.annotate(map_description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
-
-    # Write the map to disk.
-    filename = map_file + '_' + str(i) + '.png'
-    plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
-    images.append(imageio.imread(filename))
-    i += 1
-
-print('Working: 100.00%')
-print('Finished generating heatmaps. Building animation...')
-imageio.mimsave(gif_file, images)
+desc = 'Generated on %s' % time.strftime(date_format, time.localtime())
+build_static_image(downloads, desc, 'downloads.png')
+#generate_animation()
