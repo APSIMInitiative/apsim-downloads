@@ -12,6 +12,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import imageio
+import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy
@@ -29,6 +30,12 @@ from os import path
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 from mpl_toolkits.basemap import Basemap
+from enum import Enum
+
+class ColourDistribution(Enum):
+    Linear = 0
+    Polynomial = 1
+    Exponential = 2
 
 # Generates a temp file name. Does not create a file on disk.
 def get_temp_filename():
@@ -74,7 +81,7 @@ def get_country_codes(country_names, codes_lookup):
     return codes, unknown
 
 # Generates the colour scheme
-def get_colour_scheme(data, colour_scheme):
+def get_colour_scheme(data, colour_scheme, distribution):
     # Get the number of downloads from the country with the greatest
     # number of downloads.
     max_num_downloads = pandas.value_counts(data['Country'].values).max()
@@ -84,7 +91,15 @@ def get_colour_scheme(data, colour_scheme):
     # Generate colour map - indices go from 0..max_num_downloads.
     num_colours = max_num_downloads + 1
     colour_map = plt.get_cmap(colour_scheme)
-    scheme = [colour_map(i / num_colours) for i in range(num_colours)]
+
+    if distribution == ColourDistribution.Linear:
+        scheme = [colour_map(i / num_colours) for i in range(num_colours)]
+    elif distribution == ColourDistribution.Polynomial:
+        scheme = [colour_map(math.sqrt(math.sqrt(i / num_colours))) for i in range(num_colours + 1)]
+    elif distribution == ColourDistribution.Exponential:
+        scheme = [colour_map(math.exp(i - num_colours)) for i in range(num_colours + 1)]
+    else:
+        raise ValueError('Unknown colour distribution type %s' % distribution)
 
     return scheme
 
@@ -238,13 +253,16 @@ def build_static_image(download_data, description, filename):
             iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
             if iso3 in data.index:
                 num_downloads = data.loc[iso3][cols[0]]
-                color = colours[num_downloads]
+            else:
+                num_downloads = 0
 
-                # Fill this state/country with colour.
-                patches = [Polygon(numpy.array(shape), True)]
-                pc = PatchCollection(patches)
-                pc.set_facecolor(color)
-                ax.add_collection(pc)
+            color = colours[num_downloads]
+
+            # Fill this state/country with colour.
+            patches = [Polygon(numpy.array(shape), True)]
+            pc = PatchCollection(patches)
+            pc.set_facecolor(color)
+            ax.add_collection(pc)
 
         # Draw colour legend beneath map.
         if len(fig.axes) < 2:
@@ -281,7 +299,7 @@ map_type = 'cyl'
 
 # We will use the yellow-orange-red colour scheme. Alternatives here:
 # https://matplotlib.org/3.1.0/gallery/color/colormap_reference.html
-colour_scheme = 'YlOrRd'
+colour_scheme = 'hot'
 
 # Colour to use for countries with no downloads. Set to '' to use zero
 # colour in colour scheme (yellow in the yellow-orange-red scheme).
@@ -341,7 +359,7 @@ graph_downloads_for_country(downloads, dates, 'United States of America', 'downl
 graph_downloads_for_country(downloads, dates, 'Brazil', 'downloads-brazil.png')
 
 # Calculate the colour scheme
-colours = get_colour_scheme(downloads, colour_scheme)
+colours = get_colour_scheme(downloads, colour_scheme, ColourDistribution.Linear)
 cmap = mpl.colors.ListedColormap(colours)
 
 # images is the array of images which will be used in the gif
@@ -356,5 +374,6 @@ m.drawmapboundary(color = 'w')
 m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
 
 desc = 'Generated on %s' % time.strftime(date_format, time.localtime())
-build_static_image(downloads, desc, 'downloads.png')
+desc += '\nhot colour scheme with linear colour distribution'
+build_static_image(downloads, desc, 'samples/hot-lin.png')
 #generate_animation()
