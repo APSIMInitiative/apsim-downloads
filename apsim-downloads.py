@@ -88,16 +88,15 @@ def get_colour_scheme(data, colour_scheme, distribution):
     if data.empty:
         max_num_downloads = 0
 
-    # Generate colour map - indices go from 0..max_num_downloads.
     num_colours = max_num_downloads + 1
     colour_map = plt.get_cmap(colour_scheme)
 
     if distribution == ColourDistribution.Linear:
-        scheme = [colour_map(i / num_colours) for i in range(num_colours)]
+        scheme = [colour_map(i) for i in axis_ticks]
     elif distribution == ColourDistribution.Polynomial:
-        scheme = [colour_map(math.sqrt(math.sqrt(i / num_colours))) for i in range(num_colours + 1)]
+        scheme = [colour_map(math.sqrt(math.sqrt(i))) for i in axis_ticks]
     elif distribution == ColourDistribution.Exponential:
-        scheme = [colour_map(math.exp(i - num_colours)) for i in range(num_colours + 1)]
+        scheme = [colour_map(math.exp(-i)) for i in axis_ticks]
     else:
         raise ValueError('Unknown colour distribution type %s' % distribution)
 
@@ -149,102 +148,47 @@ def graph_downloads_for_country(downloads, dates, country, filename):
     plt.savefig(filename)
     plt.clf()
 
-def generate_animation():
-    # Dict mapping country codes to cumulative number of downloads in that
-    # country as of last month.
-    downloads_prev = {}
+def get_colour(colours, x):
+    if len(colours) < 1:
+        raise ValueError("No colours provided in colours array")
+    if len(colours) != len(axis_ticks):
+        raise ValueError("Length of colours array not equal to length of axis ticks array")
 
-    # Dict mapping country map coordinate info to patch info.
-    country_patches = {}
+    for tick, colour in zip(axis_ticks, colours):
+        if x <= tick:
+            return colour
+            
+    return colours[len(colours) - 1]
 
-    axis_ticks = numpy.linspace(0, 1, num_ticks)
-    axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
+def get_colour_greg(x):
+    colours = mpl.colors.CSS4_COLORS
+    if x == 0:
+        return colours['white']
+    if x < 300:
+        return colours['skyblue']
+    if x < 600:
+        return colours['royalblue']
+    if x < 900:
+        return colours['yellow']
+    if x < 1200:
+        return colours['lime']
+    if x < 1500:
+        return colours['orange']
 
-    # Initialise a stopwatch for output diagnostics.
-    start_time = time.time()
-    print('Generating frame data...')
-    for dt in dates:
-        progress = i / len(dates)
-        if i > 0: # Only show time remaining if i > 0
-            elapsed = time.time() - start_time
-            eta = elapsed / progress - elapsed
-            print('\rWorking: ', '%.2f' % (progress * 100), '%; eta = ', '%.2fs' % eta, sep = '', end = '')
-        else:
-            print('\rWorking: ', '%.2f' % (progress * 100), '%', sep = '', end = '')
-        # Each time around the loop, we only look at downloads before the current date.
-        current_date = dt.__str__()
-        downloads_before_now = downloads[downloads['Date'] < current_date]
-
-        # Get country codes
-        country_codes, unknown_countries = get_country_codes(downloads_before_now['Country'], country_codes_lookup)
-
-        # Create a data frame containing country code, and num downloads.
-        cols = ['Number of Downloads']
-        data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
-        data.index.names = ['Country Code']
-        data = data.sort_values(cols[0], ascending = False)
-        mpl.style.use(graph_style)
-
-        title = map_title + ' - ' + dt.strftime('%b %Y')
-        fig.suptitle(title, fontsize = 30, y = 0.95)
-
-        # Iterate through states/countries in the shapefile.
-        n = 0
-        for info, shape in zip(m.units_info, m.units):
-            iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
-            j = m.units.index(shape)
-            if iso3 in data.index:
-                num_downloads = data.loc[iso3][cols[0]]
-                if iso3 not in downloads_prev or downloads_prev[iso3] != num_downloads:
-                    # Only update this country's data if it has changed since last month.
-                    downloads_prev[iso3] = num_downloads
-                    color = colours[num_downloads]
-
-                    # Fill this state/country with colour.
-                    if country_patches and j in country_patches:
-                        pc = country_patches[j]
-                        pc.set_facecolor(color)
-                    else:
-                        patches = [Polygon(numpy.array(shape), True)]
-                        pc = PatchCollection(patches)
-                        pc.set_facecolor(color)
-                        country_patches[j] = pc
-                        ax.add_collection(pc)
-                    n += 1
-        # Draw colour legend beneath map.
-        if len(fig.axes) < 2:
-            ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
-            cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
-            cb.set_ticks(axis_ticks)
-            cb.set_ticklabels(axis_tick_labels)
-
-        # Add the description beneath the map.
-        if map_description != '':
-            plt.annotate(map_description, xy = (-0.8, -3.2), size = 14, xycoords = 'axes fraction')
-
-        # Write the map to disk.
-        filename = map_file + '_' + str(i) + '.png'
-        plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
-        images.append(imageio.imread(filename))
-        i += 1
-
-    print('Working: 100.00%')
-    print('Finished generating heatmaps. Building animation...')
-    imageio.mimsave(gif_file, images)
+    return colours['red']
 
 def build_static_image(download_data, description, filename):
     # Get country codes
         country_codes, unknown_countries = get_country_codes(download_data['Country'], country_codes_lookup)
 
-        axis_ticks = numpy.linspace(0, 1, num_ticks)
-        axis_tick_labels = numpy.linspace(0, len(colours) - 1, num_ticks, dtype = int)
-
         # Create a data frame containing country code, and num downloads.
         cols = ['Number of Downloads']
         data = pandas.DataFrame.from_dict(country_codes, orient = 'index', columns = cols)
         data.index.names = ['Country Code']
         data = data.sort_values(cols[0], ascending = False)
         mpl.style.use(graph_style)
+
+        max_num_downloads = data[cols[0]].max()
 
         fig.suptitle(map_title, fontsize = 30, y = 0.95)
 
@@ -256,8 +200,10 @@ def build_static_image(download_data, description, filename):
             else:
                 num_downloads = 0
 
-            color = colours[num_downloads]
-
+            #axis_max = max_num_downloads 
+            #color = get_colour(colours, num_downloads / axis_max)
+            color = get_colour_greg(num_downloads)
+            
             # Fill this state/country with colour.
             patches = [Polygon(numpy.array(shape), True)]
             pc = PatchCollection(patches)
@@ -267,9 +213,29 @@ def build_static_image(download_data, description, filename):
         # Draw colour legend beneath map.
         if len(fig.axes) < 2:
             ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
-            cb = mpl.colorbar.ColorbarBase(ax_legend, ticks = axis_ticks, cmap = cmap, orientation = 'horizontal')
-            cb.set_ticks(axis_ticks)
-            cb.set_ticklabels(axis_tick_labels)
+
+            colours = mpl.colors.CSS4_COLORS
+            scheme = [colours['white'], colours['skyblue'], colours['royalblue'], colours['yellow'], colours['lime'], colours['orange'], colours['red']]
+
+            labels = [str(l) for l in axis_tick_labels]
+            labels[len(labels) - 1] = '>' + labels[len(labels) - 1]
+            
+            #ticks = [0, 200, 500, 1000, 2000, 7000, max_num_downloads]
+            ticks = [0, 300, 600, 900, 1200, 1500, max_num_downloads]
+            labels = [str(x) for x in ticks]
+            labels[len(labels) - 1] = ''
+            labels.insert(0, '')
+            actual_ticks = numpy.linspace(0, 1, len(ticks))
+            cmap = []
+            for value, colour in zip(actual_ticks, scheme):
+                cmap.append((value, colour))
+
+            actual_ticks = numpy.linspace(0, 1, len(ticks) + 1)
+            cm = mpl.colors.LinearSegmentedColormap.from_list('custom', cmap, len(cmap))
+            cb = mpl.colorbar.ColorbarBase(ax_legend, cmap = cm, orientation = 'horizontal')
+            
+            cb.set_ticks(actual_ticks)
+            cb.set_ticklabels(labels)
 
         # Add the description beneath the map.
         if description != '':
@@ -277,6 +243,37 @@ def build_static_image(download_data, description, filename):
 
         # Write the map to disk.
         plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
+
+def filter(dataframe, field, value):
+    return dataframe[dataframe[field] == value]
+
+def print_stats(data):
+    num_regos = len(filter(data, 'Type', 'Registration'))
+    num_upgrades = len(filter(data, 'Type', 'Upgrade'))
+    num_au = len(filter(data, 'Country', 'Australia'))
+    num_nz = len(filter(data, 'Country', 'New Zealand'))
+    num_us = len(filter(data, 'Country', 'United States of America'))
+    num_china = len(filter(data, 'Country', 'China'))
+
+    num_classic = len(filter(data, 'Product', 'APSIM'))
+    # Some older version of next gen write their version into the product column
+    # Therefore we need to do a string contains rather than equality check.
+    num_nextgen = len(data[data['Product'].str.contains('APSIM Next Generation')])
+
+    print('APSIM Download/Registration statistics for 2019/20 financial year')
+    print('-----------------------------------------------------------------')
+    print('Number of downloads (upgrades + registrations): %d' % len(data))
+    print('Number of registrations: %d' % num_regos)
+    print('Number of upgrades: %d\n' % num_upgrades)
+
+    print('Number of downloads (classic):  %d' % num_classic)
+    print('Number of downloads (next gen): %d\n' % num_nextgen)
+
+    print('Number of countries with registered downloads: %d' % len(data.Country.unique()))
+    print('Number of downloads from Australia: %d' % num_au)
+    print('Number of downloads from New Zealand: %d' % num_nz)
+    print('Number of downloads from USA: %d' % num_us)
+    print('Number of downloads from China: %d\n' % num_china)
 
 # ------------------------------------------------------------------- #
 # --------------------------- Main Program -------------------------- #
@@ -299,7 +296,13 @@ map_type = 'cyl'
 
 # We will use the yellow-orange-red colour scheme. Alternatives here:
 # https://matplotlib.org/3.1.0/gallery/color/colormap_reference.html
-colour_scheme = 'hot'
+colour_scheme = 'jet'
+
+# Colour distribution algorithm. Polynomial tends to work best.
+colour_distribution = ColourDistribution.Polynomial
+
+# Iff true, use discrete colour blocks
+discrete_colours = True
 
 # Colour to use for countries with no downloads. Set to '' to use zero
 # colour in colour scheme (yellow in the yellow-orange-red scheme).
@@ -314,13 +317,10 @@ graph_style = 'bmh'
 shapefile = 'map_data/ne_10m_admin_0_countries'
 
 # Title above the map.
-map_title = 'Number of apsim downloads by country'
+map_title = 'Number of APSIM downloads by country in 2019/20'
 
 # Long description below the map.
 map_description = ''
-
-# Number of ticks shown in the axis scale.
-num_ticks = 8
 
 # Cache directory. Each 'frame' (an image) will be saved here.
 cache = 'output'
@@ -358,9 +358,14 @@ country_codes_lookup = get_codes_lookup()
 graph_downloads_for_country(downloads, dates, 'United States of America', 'downloads-us.png')
 graph_downloads_for_country(downloads, dates, 'Brazil', 'downloads-brazil.png')
 
+axis_max = 1000
+axis_ticks = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.6, 0.8, 1] #numpy.linspace(0, 1, num_ticks)
+num_ticks = len(axis_ticks)
+axis_tick_labels = [0, 200, 500, 1000, 2000, 7000] #numpy.linspace(0, axis_max, num_ticks + 1, dtype = int)
+
 # Calculate the colour scheme
-colours = get_colour_scheme(downloads, colour_scheme, ColourDistribution.Linear)
-cmap = mpl.colors.ListedColormap(colours)
+colours = get_colour_scheme(downloads, colour_scheme, colour_distribution)
+cmap = mpl.colors.ListedColormap(colours, N = num_ticks if discrete_colours else len(colours))
 
 # images is the array of images which will be used in the gif
 images = []
@@ -374,6 +379,12 @@ m.drawmapboundary(color = 'w')
 m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
 
 desc = 'Generated on %s' % time.strftime(date_format, time.localtime())
-desc += '\nhot colour scheme with linear colour distribution'
-build_static_image(downloads, desc, 'samples/hot-lin.png')
+#desc += '\n%s colour scheme with %s colour distribution' % (colour_scheme, colour_distribution)
+
+start_date_str = '2019-07-01'
+end_date_str = '2020-06-30'
+
+downloads_in_timeframe = downloads[(downloads['Date'] > start_date_str) & (downloads['Date'] < end_date_str)]
+print_stats(downloads_in_timeframe)
+build_static_image(downloads_in_timeframe, desc, 'apsim-downloads.png')
 #generate_animation()
