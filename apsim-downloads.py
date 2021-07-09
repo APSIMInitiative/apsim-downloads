@@ -260,8 +260,8 @@ def print_stats(data):
     # Therefore we need to do a string contains rather than equality check.
     num_nextgen = len(data[data['Product'].str.contains('APSIM Next Generation')])
 
-    print('APSIM Download/Registration statistics for 2019/20 financial year')
-    print('-----------------------------------------------------------------')
+    print('APSIM Download/Registration statistics for %d/%d financial year' % (start_year, end_year))
+    print('-------------------------------------------------------------------')
     print('Number of downloads (upgrades + registrations): %d' % len(data))
     print('Number of registrations: %d' % num_regos)
     print('Number of upgrades: %d\n' % num_upgrades)
@@ -316,8 +316,14 @@ graph_style = 'bmh'
 # library, this variable should *not* include the file extension.
 shapefile = 'map_data/ne_10m_admin_0_countries'
 
+# Downloads are shown for time period starting on 1 July of this year.
+start_year = 2020
+
+# Downloads are shown for time period ending on 30 June of this year.
+end_year = 2021
+
 # Title above the map.
-map_title = 'Number of APSIM downloads by country in 2019/20'
+map_title = 'Number of APSIM downloads by country in %d/%d' % (start_year, end_year)
 
 # Long description below the map.
 map_description = ''
@@ -381,8 +387,8 @@ m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
 desc = 'Generated on %s' % time.strftime(date_format, time.localtime())
 #desc += '\n%s colour scheme with %s colour distribution' % (colour_scheme, colour_distribution)
 
-start_date_str = '2019-07-01'
-end_date_str = '2020-06-30'
+start_date_str = '%d-07-01' % start_year
+end_date_str = '%d-06-30' % end_year
 
 downloads_in_timeframe = downloads[(downloads['Date'] > start_date_str) & (downloads['Date'] < end_date_str)]
 print_stats(downloads_in_timeframe)
