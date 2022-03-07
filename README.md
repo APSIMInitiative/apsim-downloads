@@ -15,4 +15,4 @@ pip install basemap-1.2.0-cp36-cp36m-win_amd64.whl
 python apsim-downloads.py
 ```
 
-![apsim-downloads](https://user-images.githubusercontent.com/36427516/59405734-d95d1600-8dee-11e9-89e4-8398032243f8.png)
+![apsim-downloads](https://user-images.githubusercontent.com/36427516/156974394-09e8b34f-0de7-4877-bdce-f7bfd8b7d057.png)
