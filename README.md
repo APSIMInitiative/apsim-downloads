@@ -5,7 +5,7 @@ Maps apsim downloads by country
 ### Instructions
 
 ```sh
-pip install pycountry requests pyproj basemap
+pip install pycountry requests pyproj basemap certifi
 
 # On Windows, download and install basemap and pyproj from here:
 # https://www.lfd.uci.edu/~gohlke/pythonlibs

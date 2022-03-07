@@ -1,5 +1,6 @@
 #!pip install pycountry
 #!pip install requests
+#!pip install pycountry-convert
 # On Windows, download and install basemap and pyproj from here:
 # https://www.lfd.uci.edu/~gohlke/pythonlibs
 #!pip install pyproj-2.1.3-cp36-cp36m-win_amd64.whl
@@ -10,7 +11,7 @@
 # soon so for now just ignore these warnings.
 import warnings
 warnings.filterwarnings('ignore')
-
+import pycountry_convert
 import imageio
 import math
 import matplotlib as mpl
@@ -244,8 +245,24 @@ def build_static_image(download_data, description, filename):
         # Write the map to disk.
         plt.savefig(filename, bbox_inches = 'tight', pad_inches = 0.2)
 
+# Return true iff a country is in Africa
+def isInAfrica(country):
+    country_code = pycountry_convert.country_name_to_country_alpha2(country, cn_name_format="default")
+    print('Checkint continent for country %s (%s)' % (country, country_code))
+    if (country_code == 'AQ'):
+        return False # Antarctica - apparently it's not a continent???
+    continent_name = pycountry_convert.country_alpha2_to_continent_code(country_code)
+    return continent_name == 'AF'
+
 def filter(dataframe, field, value):
     return dataframe[dataframe[field] == value]
+
+# Filter the dataframe by the given expression
+# @param dataframe: the dataframe to be filtered
+# @param field: field (column) name in the dataframe to be filtered
+# @param filterfunc: function which takes a string and returns a bool
+def filterLambda(dataframe, field, filterfunc):
+    return dataframe[dataframe[field].apply(filterfunc)]
 
 def print_stats(data):
     num_regos = len(filter(data, 'Type', 'Registration'))
@@ -254,6 +271,7 @@ def print_stats(data):
     num_nz = len(filter(data, 'Country', 'New Zealand'))
     num_us = len(filter(data, 'Country', 'United States of America'))
     num_china = len(filter(data, 'Country', 'China'))
+    num_africa = len(filterLambda(data, 'Country', isInAfrica))
 
     num_classic = len(filter(data, 'Product', 'APSIM'))
     # Some older version of next gen write their version into the product column
@@ -273,7 +291,8 @@ def print_stats(data):
     print('Number of downloads from Australia: %d' % num_au)
     print('Number of downloads from New Zealand: %d' % num_nz)
     print('Number of downloads from USA: %d' % num_us)
-    print('Number of downloads from China: %d\n' % num_china)
+    print('Number of downloads from China: %d' % num_china)
+    print('Number of downloads from Africa: %d\n' % num_africa)
 
 # ------------------------------------------------------------------- #
 # --------------------------- Main Program -------------------------- #
