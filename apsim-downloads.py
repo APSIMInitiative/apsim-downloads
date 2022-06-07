@@ -251,7 +251,12 @@ def isInAfrica(country):
     print('Checkint continent for country %s (%s)' % (country, country_code))
     if (country_code == 'AQ'):
         return False # Antarctica - apparently it's not a continent???
-    continent_name = pycountry_convert.country_alpha2_to_continent_code(country_code)
+    continent_name = ""
+    try:
+        pycountry_convert.country_alpha2_to_continent_code(country_code)
+    except:
+        continent_name = ""
+        
     return continent_name == 'AF'
 
 def filter(dataframe, field, value):
@@ -304,7 +309,7 @@ def print_stats(data):
 downloads_fileName = 'registrations.csv'
 #downloads_filename = get_temp_filename()
 
-registrations_url = 'https://apsimdev.apsim.info/APSIM.Registration.Portal/ViewRegistrations.aspx'
+registrations_url = 'https://registration.apsim.info/api/APSIM.Registration.Portal/ViewRegistrations.aspx'
 
 date_format = '%Y-%m-%d'
 
@@ -341,9 +346,6 @@ start_year = 2020
 # Downloads are shown for time period ending on 30 June of this year.
 end_year = 2021
 
-# Title above the map.
-map_title = 'Number of APSIM downloads by country in %d/%d' % (start_year, end_year)
-
 # Long description below the map.
 map_description = ''
 
@@ -360,7 +362,18 @@ gif_file = 'apsim-downloads.gif'
 # recreate all images.
 use_cache = False
 
+# The file containing all registrations
+downloads_fileName = 'registrations.csv'
+
 # ----- End Constants ----- #
+
+# Read command line.
+if(len(sys.argv) == 3) :
+	start_year = int(sys.argv[1])
+	end_year = int(sys.argv[2])
+
+# Title above the map.
+map_title = 'Number of APSIM downloads by country in %d/%d' % (start_year, end_year)
 
 # If using cache, just rebuild gif and exit.
 if use_cache:
@@ -368,7 +381,8 @@ if use_cache:
     sys.exit(0)
 
 # Get downloads info from web service.
-downloads = get_downloads(registrations_url, downloads_fileName)
+downloads = pandas.read_csv(downloads_fileName, quotechar = '"', escapechar = '\\', doublequote = True)
+#downloads = get_downloads(registrations_url, downloads_fileName)
 #downloads = downloads[downloads['Country'] != 'Australia']
 
 # Determine date range
@@ -408,7 +422,6 @@ desc = 'Generated on %s' % time.strftime(date_format, time.localtime())
 
 start_date_str = '%d-07-01' % start_year
 end_date_str = '%d-06-30' % end_year
-
 downloads_in_timeframe = downloads[(downloads['Date'] > start_date_str) & (downloads['Date'] < end_date_str)]
 print_stats(downloads_in_timeframe)
 build_static_image(downloads_in_timeframe, desc, 'apsim-downloads.png')

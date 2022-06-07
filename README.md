@@ -5,12 +5,7 @@ Maps apsim downloads by country
 ### Instructions
 
 ```sh
-pip install pycountry requests pyproj basemap certifi
-
-# On Windows, download and install basemap and pyproj from here:
-# https://www.lfd.uci.edu/~gohlke/pythonlibs
-pip install pyproj-2.1.3-cp36-cp36m-win_amd64.whl
-pip install basemap-1.2.0-cp36-cp36m-win_amd64.whl
+pip install pycountry pycountry_convert requests pyproj basemap certifi imageio pandas iso3166
 
 python apsim-downloads.py
 ```
