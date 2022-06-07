@@ -261,7 +261,7 @@ def isInAfrica(country):
 
 def filter(dataframe, field, value):
     return dataframe[dataframe[field] == value]
-
+    
 # Filter the dataframe by the given expression
 # @param dataframe: the dataframe to be filtered
 # @param field: field (column) name in the dataframe to be filtered
@@ -272,32 +272,51 @@ def filterLambda(dataframe, field, filterfunc):
 def print_stats(data):
     num_regos = len(filter(data, 'Type', 'Registration'))
     num_upgrades = len(filter(data, 'Type', 'Upgrade'))
-    num_au = len(filter(data, 'Country', 'Australia'))
-    num_nz = len(filter(data, 'Country', 'New Zealand'))
-    num_us = len(filter(data, 'Country', 'United States of America'))
-    num_china = len(filter(data, 'Country', 'China'))
-    num_africa = len(filterLambda(data, 'Country', isInAfrica))
+    au = filter(data, 'Country', 'Australia')
+    num_au_classic = len(filter(au, 'Product', 'APSIM'))
+    num_au_nextgen = len(au[au['Product'].str.contains('APSIM Next Generation')])
+
+    nz = filter(data, 'Country', 'New Zealand')
+    num_nz_classic = len(filter(nz, 'Product', 'APSIM'))
+    num_nz_nextgen = len(nz[nz['Product'].str.contains('APSIM Next Generation')])
+
+    us = filter(data, 'Country', 'United States of America')
+    num_us_classic = len(filter(us, 'Product', 'APSIM'))
+    num_us_nextgen = len(us[us['Product'].str.contains('APSIM Next Generation')])
+
+    china = filter(data, 'Country', 'China')
+    num_china_classic = len(filter(china, 'Product', 'APSIM'))
+    num_china_nextgen = len(china[china['Product'].str.contains('APSIM Next Generation')])
+
+    africa = filterLambda(data, 'Country', isInAfrica)
+    num_africa_classic = len(filter(africa, 'Product', 'APSIM'))
+    num_africa_nextgen = len(africa[africa['Product'].str.contains('APSIM Next Generation')])
 
     num_classic = len(filter(data, 'Product', 'APSIM'))
     # Some older version of next gen write their version into the product column
     # Therefore we need to do a string contains rather than equality check.
     num_nextgen = len(data[data['Product'].str.contains('APSIM Next Generation')])
 
+    print('')
+    print('Copy the stats below into Graphs.xlsx')
     print('APSIM Download/Registration statistics for %d/%d financial year' % (start_year, end_year))
     print('-------------------------------------------------------------------')
     print('Number of downloads (upgrades + registrations): %d' % len(data))
-    print('Number of registrations: %d' % num_regos)
-    print('Number of upgrades: %d\n' % num_upgrades)
-
-    print('Number of downloads (classic):  %d' % num_classic)
-    print('Number of downloads (next gen): %d\n' % num_nextgen)
-
-    print('Number of countries with registered downloads: %d' % len(data.Country.unique()))
-    print('Number of downloads from Australia: %d' % num_au)
-    print('Number of downloads from New Zealand: %d' % num_nz)
-    print('Number of downloads from USA: %d' % num_us)
-    print('Number of downloads from China: %d' % num_china)
-    print('Number of downloads from Africa: %d\n' % num_africa)
+    print('Number of registrations:                        %d' % num_regos)
+    print('Number of upgrades:                             %d' % num_upgrades)
+    print('Number of downloads (classic):                  %d' % num_classic)
+    print('Number of downloads (next gen):                 %d' % num_nextgen)
+    print('Number of countries with registered downloads:  %d' % len(data.Country.unique()))
+    print('Number of downloads from Australia (classic):   %d' % num_au_classic)
+    print('Number of downloads from Australia (nextgen):   %d' % num_au_nextgen)
+    print('Number of downloads from New Zealand (classic): %d' % num_nz_classic)
+    print('Number of downloads from New Zealand (nextgen): %d' % num_nz_nextgen)
+    print('Number of downloads from USA (classic):         %d' % num_us_classic)
+    print('Number of downloads from USA (nextgen):         %d' % num_us_nextgen)
+    print('Number of downloads from China (classic):       %d' % num_china_classic)
+    print('Number of downloads from China (nextgen):       %d' % num_china_nextgen)
+    print('Number of downloads from Africa (classic):      %d' % num_africa_classic)
+    print('Number of downloads from Africa (nextgen):      %d' % num_africa_nextgen)
 
 # ------------------------------------------------------------------- #
 # --------------------------- Main Program -------------------------- #
@@ -382,6 +401,10 @@ if use_cache:
 
 # Get downloads info from web service.
 downloads = pandas.read_csv(downloads_fileName, quotechar = '"', escapechar = '\\', doublequote = True)
+
+# Only want APSIM downloads, not APSoil etc...
+downloads = downloads[downloads['Product'].str.contains('APSIM')]
+
 #downloads = get_downloads(registrations_url, downloads_fileName)
 #downloads = downloads[downloads['Country'] != 'Australia']
 
