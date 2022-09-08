@@ -130,7 +130,7 @@ def rebuild_gif(filename, cache_dir):
     print('\rWorking: 100.00%; eta = 0.00s\nWriting animation to disk...')
     imageio.mimsave(gif_file, images)
 
-def graph_downloads_for_country(downloads, dates, country, filename):
+def graph_downloads_for_country(title, downloads, dates, country, filename):
     downloads = downloads[downloads['Country'] == country]
     x = []
     y = []
@@ -142,12 +142,30 @@ def graph_downloads_for_country(downloads, dates, country, filename):
     
     plt.clf()
     plt.plot(x, y)
-    plt.title('%s APSIM Downloads over time' % country)
+    plt.title(title % country)
     plt.xlabel('Date')
     plt.ylabel('Cumulative number of downloads')
     plt.grid(True)
     plt.savefig(filename)
     plt.clf()
+    
+def graph_downloads(title, downloads, dates, filename):
+    x = []
+    y = []
+    for dt in dates:
+        current_date = dt.__str__()
+        downloads_before_now = downloads[downloads['Date'] < current_date]
+        x.append(dt)
+        y.append(len(downloads_before_now))
+    
+    plt.clf()
+    plt.plot(x, y)
+    plt.title(title)
+    plt.xlabel('Date')
+    plt.ylabel('Cumulative number of downloads')
+    plt.grid(True)
+    plt.savefig(filename)
+    plt.clf()    
 
 def get_colour(colours, x):
     if len(colours) < 1:
@@ -161,22 +179,18 @@ def get_colour(colours, x):
             
     return colours[len(colours) - 1]
 
-def get_colour_greg(x):
+def get_colour_index(x):
     colours = mpl.colors.CSS4_COLORS
     if x == 0:
-        return colours['white']
-    if x < 300:
-        return colours['skyblue']
-    if x < 600:
-        return colours['royalblue']
-    if x < 900:
-        return colours['yellow']
-    if x < 1200:
-        return colours['lime']
+        return 0
+    if x < 500:
+        return 1
+    if x < 1000:
+        return 2
     if x < 1500:
-        return colours['orange']
+        return 3
 
-    return colours['red']
+    return 4
 
 def build_static_image(download_data, description, filename):
     # Get country codes
@@ -193,6 +207,9 @@ def build_static_image(download_data, description, filename):
 
         fig.suptitle(map_title, fontsize = 30, y = 0.95)
 
+        # Blue colour scheme from ColorBrewer 2.0
+        scheme = ['#ffffff','#d3eec9','#addfa4','#7ac77c','#49751f']
+
         # Iterate through states/countries in the shapefile.
         for info, shape in zip(m.units_info, m.units):
             iso3 = info['ADM0_A3'] # this gets the iso alpha-3 country code
@@ -202,8 +219,7 @@ def build_static_image(download_data, description, filename):
                 num_downloads = 0
 
             #axis_max = max_num_downloads 
-            #color = get_colour(colours, num_downloads / axis_max)
-            color = get_colour_greg(num_downloads)
+            color = scheme[get_colour_index(num_downloads)]
             
             # Fill this state/country with colour.
             patches = [Polygon(numpy.array(shape), True)]
@@ -215,14 +231,10 @@ def build_static_image(download_data, description, filename):
         if len(fig.axes) < 2:
             ax_legend = fig.add_axes([0.35, 0.14, 0.3, 0.03], zorder = 3)
 
-            colours = mpl.colors.CSS4_COLORS
-            scheme = [colours['white'], colours['skyblue'], colours['royalblue'], colours['yellow'], colours['lime'], colours['orange'], colours['red']]
-
             labels = [str(l) for l in axis_tick_labels]
             labels[len(labels) - 1] = '>' + labels[len(labels) - 1]
             
-            #ticks = [0, 200, 500, 1000, 2000, 7000, max_num_downloads]
-            ticks = [0, 300, 600, 900, 1200, 1500, max_num_downloads]
+            ticks = [0, 500, 1000, 1500, max_num_downloads]
             labels = [str(x) for x in ticks]
             labels[len(labels) - 1] = ''
             labels.insert(0, '')
@@ -248,7 +260,7 @@ def build_static_image(download_data, description, filename):
 # Return true iff a country is in Africa
 def isInAfrica(country):
     country_code = pycountry_convert.country_name_to_country_alpha2(country, cn_name_format="default")
-    print('Checkint continent for country %s (%s)' % (country, country_code))
+    print('Checking continent for country %s (%s)' % (country, country_code))
     if (country_code == 'AQ'):
         return False # Antarctica - apparently it's not a continent???
     continent_name = ""
@@ -299,7 +311,7 @@ def print_stats(data):
 
     print('')
     print('Copy the stats below into Graphs.xlsx')
-    print('APSIM Download/Registration statistics for %d/%d financial year' % (start_year, end_year))
+    print('APSIM Download/Registration statistics %s to %s' % (start_date_str, end_date_str))
     print('-------------------------------------------------------------------')
     print('Number of downloads (upgrades + registrations): %d' % len(data))
     print('Number of registrations:                        %d' % num_regos)
@@ -360,10 +372,10 @@ graph_style = 'bmh'
 shapefile = 'map_data/ne_10m_admin_0_countries'
 
 # Downloads are shown for time period starting on 1 July of this year.
-start_year = 2020
+start_date_str = '2020-01-01'
 
 # Downloads are shown for time period ending on 30 June of this year.
-end_year = 2021
+end_date_str = '2020-12-31'
 
 # Long description below the map.
 map_description = ''
@@ -388,11 +400,11 @@ downloads_fileName = 'registrations.csv'
 
 # Read command line.
 if(len(sys.argv) == 3) :
-	start_year = int(sys.argv[1])
-	end_year = int(sys.argv[2])
+	start_date_str = sys.argv[1]
+	end_date_str = sys.argv[2]
 
 # Title above the map.
-map_title = 'Number of APSIM downloads by country in %d/%d' % (start_year, end_year)
+map_title = 'Number of APSIM downloads by country %s to %s' % (start_date_str, end_date_str)
 
 # If using cache, just rebuild gif and exit.
 if use_cache:
@@ -417,8 +429,19 @@ dates = [x.date() for x in pandas.date_range(first_date, last_date, freq = 'MS')
 # Get a dict, mapping country names to country codes
 country_codes_lookup = get_codes_lookup()
 
-graph_downloads_for_country(downloads, dates, 'United States of America', 'downloads-us.png')
-graph_downloads_for_country(downloads, dates, 'Brazil', 'downloads-brazil.png')
+graph_downloads('APSIM Downloads', downloads, dates, 'downloads-all.png')
+graph_downloads_for_country('APSIM Downloads: %s', downloads, dates, 'United States of America', 'downloads-us.png')
+graph_downloads_for_country('APSIM Downloads: %s', downloads, dates, 'Brazil', 'downloads-brazil.png')
+graph_downloads_for_country('APSIM Downloads: %s', downloads, dates, 'Australia', 'downloads-australia.png')
+graph_downloads_for_country('APSIM Downloads: %s', downloads, dates, 'China', 'downloads-china.png')
+
+# Only want APSIM Next Gen downloads
+nextgen = downloads[downloads['Product'].str.contains('APSIM Next Generation')]
+graph_downloads('APSIM Next Generation Downloads', nextgen, dates, 'downloads-all-nextgen.png')
+graph_downloads_for_country('APSIM Next Generation Downloads: %s', nextgen, dates, 'United States of America', 'downloads-us-nexgen.png')
+graph_downloads_for_country('APSIM Next Generation Downloads: %s', nextgen, dates, 'Brazil', 'downloads-brazil-nextgen.png')
+graph_downloads_for_country('APSIM Next Generation Downloads: %s', nextgen, dates, 'Australia', 'downloads-australia-nextgen.png')
+graph_downloads_for_country('APSIM Next Generation Downloads: %s', nextgen, dates, 'China', 'downloads-china-nextgen.png')
 
 axis_max = 1000
 axis_ticks = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.6, 0.8, 1] #numpy.linspace(0, 1, num_ticks)
@@ -443,9 +466,7 @@ m.readshapefile(shapefile, 'units', color = '#444444', linewidth = 0.2)
 desc = 'Generated on %s' % time.strftime(date_format, time.localtime())
 #desc += '\n%s colour scheme with %s colour distribution' % (colour_scheme, colour_distribution)
 
-start_date_str = '%d-07-01' % start_year
-end_date_str = '%d-06-30' % end_year
-downloads_in_timeframe = downloads[(downloads['Date'] > start_date_str) & (downloads['Date'] < end_date_str)]
+downloads_in_timeframe = downloads[(downloads['Date'] >= start_date_str) & (downloads['Date'] <= end_date_str)]
 print_stats(downloads_in_timeframe)
 build_static_image(downloads_in_timeframe, desc, 'apsim-downloads.png')
 #generate_animation()
