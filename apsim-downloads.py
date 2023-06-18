@@ -24,6 +24,8 @@ import sys
 import tempfile
 import time
 import unicodedata
+import datetime as dt
+from dateutil.relativedelta import relativedelta
 #import warnings
 
 from iso3166 import countries
@@ -48,18 +50,6 @@ def get_codes_lookup():
     for country in countries:
         countriesMap[country.name] = country.alpha3
     return countriesMap
-
-# Gets raw download information from the webservice.
-def get_downloads(url, outfile):
-    # Get download data from web service
-    resp = requests.get(registrations_url)
-    if not resp.status_code == 200:
-        raise Exception('Error fetching data from webservice: status code = %d' % resp.status_code)
-    
-    with open(outfile, 'w', encoding = 'utf-8') as file:
-        file.write(resp.text)
-    
-    return pandas.read_csv(downloads_fileName, quotechar = '"', escapechar = '\\', doublequote = True)
 
 # Gets a dict mapping country code to number of downloads from an
 # array of country names. Ignores any invalid (non ISO-3166 compliant)
@@ -340,8 +330,6 @@ def print_stats(data):
 downloads_fileName = 'registrations.csv'
 #downloads_filename = get_temp_filename()
 
-registrations_url = 'https://registration.apsim.info/api/APSIM.Registration.Portal/ViewRegistrations.aspx'
-
 date_format = '%Y-%m-%d'
 
 # We use the 'Equidistant Cylindrical Projection' projection type.
@@ -393,15 +381,14 @@ gif_file = 'apsim-downloads.gif'
 # recreate all images.
 use_cache = False
 
-# The file containing all registrations
-downloads_fileName = 'registrations.csv'
-
 # ----- End Constants ----- #
 
 # Read command line.
 if(len(sys.argv) == 3) :
 	start_date_str = sys.argv[1]
 	end_date_str = sys.argv[2]
+
+print('You need to manually download registrations and store in registrations.csv')
 
 # Title above the map.
 map_title = 'Number of APSIM downloads by country %s to %s' % (start_date_str, end_date_str)
@@ -417,7 +404,6 @@ downloads = pandas.read_csv(downloads_fileName, quotechar = '"', escapechar = '\
 # Only want APSIM downloads, not APSoil etc...
 downloads = downloads[downloads['Product'].str.contains('APSIM')]
 
-#downloads = get_downloads(registrations_url, downloads_fileName)
 #downloads = downloads[downloads['Country'] != 'Australia']
 
 # Determine date range
@@ -470,3 +456,19 @@ downloads_in_timeframe = downloads[(downloads['Date'] >= start_date_str) & (down
 print_stats(downloads_in_timeframe)
 build_static_image(downloads_in_timeframe, desc, 'apsim-downloads.png')
 #generate_animation()
+#
+# Generate downloads by year table.
+
+print('Year, NumClassic, NumNextGen')
+start_date = dt.datetime.strptime(start_date_str, '%Y-%m-%d')
+end_date = dt.datetime.strptime(end_date_str, '%Y-%m-%d')
+while (start_date <= end_date):
+  end_year = dt.datetime(start_date.year, 12, 31)
+  data = downloads[(downloads['Date'] >= start_date.strftime('%Y-%m-%d')) & (downloads['Date'] <= end_year.strftime('%Y-%m-%d'))]
+
+  num_classic = len(filter(data, 'Product', 'APSIM'))
+  num_nextgen = len(data[data['Product'].str.contains('APSIM Next Generation')])
+
+  print(f'{start_date.year}, {num_classic}, {num_nextgen}')
+  start_date = start_date + relativedelta(years=1)
+
